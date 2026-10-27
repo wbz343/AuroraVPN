@@ -3,12 +3,6 @@
 # Usage:
 #   Android: pwsh -File native/tor/build.ps1 -Platform android -Abi arm64-v8a,x86_64,armeabi-v7a
 #   Windows: pwsh -File native/tor/build.ps1 -Platform windows
-#
-# Android Note: They are executables, not libraries, but named lib*.so anyway.
-# That is not a disguise: Android only extracts and marks executable the files 
-# under lib/<abi>/ that end in .so.
-#
-# Windows Note: Outputs standard .exe files, no .so disguise needed.
 
 param(
     [string]$Platform = 'android',
@@ -64,26 +58,32 @@ if ($Platform -eq 'windows') {
 
     foreach ($transport in $Transports) {
         $src = Join-Path $here "third_party/$($transport.Source)"
-        # Windows 下直接输出为标准的 .exe 文件
         $exe = Join-Path $dir "$($transport.Name).exe"
 
         Push-Location $src
         try {
             $env:GOFLAGS = '-mod=mod'
-            $env:CGO_ENABLED = '1'
+            
+            # 🚨 关键修复 1: Windows 下纯 Go 编译通常不需要 CGO，禁用它可以避免 MinGW 的 C 库依赖问题
+            $env:CGO_ENABLED = '0' 
             $env:GOOS = 'windows'
             $env:GOARCH = 'amd64'
-            $env:CC = 'gcc' # 依赖 MinGW-w64
+            # 移除了 $env:CC = 'gcc'，因为 CGO_ENABLED=0 时不需要 C 编译器
 
             Write-Host "building $($transport.Name) for windows/amd64 ..." -ForegroundColor Cyan
             
-            # Windows 不需要 -buildmode=pie，默认即为兼容模式。
-            # 保留 -checklinkname=0 以防共享代码库中的 wlynxg/anet 触发 Go 1.23+ 的严格检查。
-            go build -trimpath -ldflags="-w -s -checklinkname=0" -o $exe $transport.Package
-            if ($LASTEXITCODE -ne 0) { throw "go build failed for $($transport.Name) on windows" }
+            # 🚨 关键修复 2: 捕获构建输出，如果失败则打印详细错误，而不是静默吞掉
+            $buildOutput = go build -trimpath -ldflags="-w -s -checklinkname=0" -o $exe $transport.Package 2>&1
+            
+            if ($LASTEXITCODE -ne 0) { 
+                Write-Host "=== Go Build Failed Output ===" -ForegroundColor Red
+                Write-Host $buildOutput -ForegroundColor Red
+                Write-Host "==============================" -ForegroundColor Red
+                throw "go build failed for $($transport.Name) on windows. See detailed output above." 
+            }
         } finally {
             Pop-Location
-            Remove-Item Env:GOFLAGS, Env:CGO_ENABLED, Env:GOOS, Env:GOARCH, Env:CC -ErrorAction SilentlyContinue
+            Remove-Item Env:GOFLAGS, Env:CGO_ENABLED, Env:GOOS, Env:GOARCH -ErrorAction SilentlyContinue
         }
 
         $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
