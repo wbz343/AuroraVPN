@@ -4,7 +4,7 @@
   "identifier": "com.auroravpn.desktop",
   "build": {
     "beforeDevCommand": "cd ../src && npm run dev",
-    "beforeBuildCommand": "node -e \"const fs = require('fs'); const path = require('path'); const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd(); const projectRoot = path.join(repoRoot, 'src-tauri'); const required = [path.join(projectRoot, 'wintun.dll'), path.join(repoRoot, 'native/chain/build/windows/amd64/auroravpn-core.exe'), path.join(repoRoot, 'native/tor/build/windows/amd64/lyrebird.exe'), path.join(repoRoot, 'native/tor/build/windows/amd64/snowflake.exe')]; const missing = required.filter((f) => !fs.existsSync(f)); if (missing.length) { console.error('Missing Tauri build artifacts:\\n' + missing.join('\\n')); process.exit(1); }\"",
+    "beforeBuildCommand": "cd ../src && npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../src/dist"
   },
