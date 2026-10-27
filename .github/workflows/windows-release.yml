@@ -40,13 +40,19 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+
+          Write-Host "Installing MinGW..."
           choco install mingw -y --no-progress
 
           $candidateDirs = @(
+            'C:\ProgramData\chocolatey\bin',
             'C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin',
             'C:\ProgramData\mingw64\mingw64\bin',
             'C:\tools\mingw64\bin',
-            'C:\msys64\mingw64\bin'
+            'C:\msys64\mingw64\bin',
+            'C:\msys64\usr\bin',
+            'C:\mingw64\bin',
+            'C:\mingw\bin'
           )
 
           $mingwBin = $candidateDirs |
@@ -54,21 +60,33 @@ jobs:
             Select-Object -First 1
 
           if (-not $mingwBin) {
+            $fallback = Get-ChildItem -Path 'C:\' -Filter 'gcc.exe' -Recurse -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match 'mingw|msys64' } |
+              Select-Object -First 1
+            if ($fallback) {
+              $mingwBin = Split-Path -Parent $fallback.FullName
+            }
+          }
+
+          if (-not $mingwBin) {
             $checked = ($candidateDirs | ForEach-Object {
-              "$_ => $((Test-Path (Join-Path $_ 'gcc.exe')) -as [string])"
+              "$($_) => $((Test-Path (Join-Path $_ 'gcc.exe')) -as [string])"
             }) -join '; '
             throw "MinGW gcc.exe not found. Checked: $checked"
           }
 
-          $mingwBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:Path = "$mingwBin;$env:Path"
+          $env:GITHUB_PATH = "$mingwBin;$env:GITHUB_PATH"
           Write-Host "Added $mingwBin to PATH" -ForegroundColor Green
           & (Join-Path $mingwBin 'gcc.exe') --version
 
       - name: Verify GCC
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           gcc --version
           where.exe gcc
+          Get-Command gcc | Format-List *
 
       - name: Initialize and Build Native Go Components (Windows)
         shell: pwsh
@@ -111,10 +129,9 @@ jobs:
             if ($existing.Hash -eq $ExpectedHash.ToUpper()) {
               Write-Host "wintun.dll already in repo and verified, skip download" -ForegroundColor Green
               exit 0
-            } else {
-              Write-Warning "Existing wintun.dll hash mismatch, re-downloading"
-              Remove-Item $dllPath -Force
             }
+            Write-Warning "Existing wintun.dll hash mismatch, re-downloading"
+            Remove-Item $dllPath -Force
           }
 
           if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
@@ -129,16 +146,21 @@ jobs:
           foreach ($url in $urls) {
             try {
               Write-Host "Downloading $url" -ForegroundColor Cyan
-              Invoke-WebRequest `
-                -Uri $url `
-                -OutFile $zipPath `
-                -UseBasicParsing `
-                -UserAgent "Mozilla/5.0" `
-                -MaximumRetryCount 3 `
-                -RetryIntervalSec 5
+              for ($attempt = 1; $attempt -le 3; $attempt++) {
+                try {
+                  Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing -UserAgent 'Mozilla/5.0'
+                  break
+                }
+                catch {
+                  if ($attempt -eq 3) { throw }
+                  Write-Warning "Download attempt $attempt failed: $($_.Exception.Message). Retrying in 5s..."
+                  Start-Sleep -Seconds 5
+                }
+              }
               $ok = $true
               break
-            } catch {
+            }
+            catch {
               Write-Warning "Fail: $($_.Exception.Message)"
             }
           }
