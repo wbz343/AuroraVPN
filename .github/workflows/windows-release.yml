@@ -39,23 +39,36 @@ jobs:
       - name: Install Mingw-w64
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           choco install mingw -y --no-progress
 
-          $mingwBin = "C:\ProgramData\mingw64\mingw64\bin"
-          if (Test-Path $mingwBin) {
-            echo $mingwBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-            Write-Host "Added $mingwBin to PATH" -ForegroundColor Green
-          } else {
-            $chocoPath = "C:\tools\mingw64\bin"
-            if (Test-Path $chocoPath) {
-              echo $chocoPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-              Write-Host "Added $chocoPath to PATH" -ForegroundColor Green
-            } else {
-              throw "mingw64 bin directory not found after installation"
-            }
+          $candidateDirs = @(
+            'C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin',
+            'C:\ProgramData\mingw64\mingw64\bin',
+            'C:\tools\mingw64\bin',
+            'C:\msys64\mingw64\bin'
+          )
+
+          $mingwBin = $candidateDirs |
+            Where-Object { $_ -and (Test-Path (Join-Path $_ 'gcc.exe')) } |
+            Select-Object -First 1
+
+          if (-not $mingwBin) {
+            $checked = ($candidateDirs | ForEach-Object {
+              "$_ => $((Test-Path (Join-Path $_ 'gcc.exe')) -as [string])"
+            }) -join '; '
+            throw "MinGW gcc.exe not found. Checked: $checked"
           }
 
-          & "$mingwBin\gcc.exe" --version
+          $mingwBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "Added $mingwBin to PATH" -ForegroundColor Green
+          & (Join-Path $mingwBin 'gcc.exe') --version
+
+      - name: Verify GCC
+        shell: pwsh
+        run: |
+          gcc --version
+          where.exe gcc
 
       - name: Initialize and Build Native Go Components (Windows)
         shell: pwsh
