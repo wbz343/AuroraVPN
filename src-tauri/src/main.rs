@@ -1,31 +1,45 @@
 // 防止 Windows 控制台窗口弹出
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use serde_json::json;
+use std::process::{Child, Command};
+use std::sync::{Arc, Mutex};
+use tauri::Manager;
 
-// 模拟调用底层核心。实际项目中，这里应调用 native/aether 或加载 Go 编译的 DLL
+// ==========================================
+// 1. 全局状态管理
+// ==========================================
+// 用于跟踪当前正在运行的 VPN 核心进程和传输层进程，防止重复启动和资源泄漏
+#[derive(Default)]
+struct VpnState {
+    core_process: Arc<Mutex<Option<Child>>>,
+    transport_process: Arc<Mutex<Option<Child>>>,
+}
+
+// ==========================================
+// 2. Tauri Commands (前端可调用的后端函数)
+// ==========================================
+
 #[tauri::command]
-fn connect_vpn(protocol: String) -> Result<String, String> {
-    println!("Backend: Connecting with protocol: {}", protocol);
-    
-    // 实际逻辑示例：
-    // if protocol == "psiphon" {
-    //     unsafe { call_go_psiphon_start() }
-    // }
-    
-    Ok(format!("Successfully connected via {}", protocol))
-}
+fn connect_vpn(
+    protocol: String,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<VpnState>,
+) -> Result<String, String> {
+    println!("[Backend] Connecting with protocol: {}", protocol);
 
-#[tauri::command]
-fn disconnect_vpn() -> Result<String, String> {
-    println!("Backend: Disconnecting VPN...");
-    // 实际逻辑：调用底层断开接口，清理 TUN 接口
-    Ok("Disconnected".to_string())
-}
+    // 获取打包后的 resources 目录绝对路径
+    let resource_dir = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to get resource directory: {}", e))?;
 
-fn main() {
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![connect_vpn, disconnect_vpn])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-}
+    // 1. 启动核心代理引擎 (mihomo / auroravpn-core)
+    let core_exe = resource_dir.join("auroravpn-core.exe");
+    if !core_exe.exists() {
+        return Err(format!("Core executable not found at: {:?}", core_exe));
+    }
+
+    // 检查是否已经在运行
+    let mut core_proc_guard = state.core_process.lock().unwrap();
+    if core_proc_guard.is_some() {
+        return Ok("Core engine is already running.".
