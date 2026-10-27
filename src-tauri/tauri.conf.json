@@ -4,7 +4,7 @@
   "identifier": "com.auroravpn.desktop",
   "build": {
     "beforeDevCommand": "cd ../src && npm run dev",
-    "beforeBuildCommand": "node -e \"const { spawnSync } = require('child_process'); const fs = require('fs'); const path = require('path'); const root = process.env.GITHUB_WORKSPACE || path.resolve(__dirname, '..'); const maybe = [path.join(root, 'src-tauri', 'wintun.dll'), path.join(root, 'src-tauri', 'src', 'assets')]; const target = path.join(root, 'src-tauri', 'wintun.dll'); if (!fs.existsSync(target)) { console.log('wintun.dll not found at build time; Tauri will still package if present in repo'); }\"",
+    "beforeBuildCommand": "node -e \"const { spawnSync } = require('child_process'); const fs = require('fs'); const path = require('path'); const root = process.env.GITHUB_WORKSPACE || path.resolve(__dirname, '..'); const target = path.join(root, 'src-tauri', 'wintun.dll'); if (!fs.existsSync(target)) { console.log('wintun.dll not found at build time; Tauri will still package if present in repo'); }\"",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../src/dist"
   },
