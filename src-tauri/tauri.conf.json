@@ -4,7 +4,7 @@
   "identifier": "com.auroravpn.desktop",
   "build": {
     "beforeDevCommand": "cd ../src && npm run dev",
-    "beforeBuildCommand": "node -e \"const { spawnSync } = require('child_process'); const fs = require('fs'); const path = require('path'); const root = process.env.GITHUB_WORKSPACE || path.resolve(__dirname, '..'); const src = path.join(root, 'src'); if (!fs.existsSync(src)) { console.error('Missing frontend dir: ' + src); process.exit(1); } const install = spawnSync('npm', ['install'], { cwd: src, stdio: 'inherit', shell: true }); if (install.status) process.exit(install.status); const build = spawnSync('npm', ['run', 'build'], { cwd: src, stdio: 'inherit', shell: true }); process.exit(build.status || 0);\"",
+    "beforeBuildCommand": "node -e \"const { spawnSync } = require('child_process'); const fs = require('fs'); const path = require('path'); const root = process.env.GITHUB_WORKSPACE || path.resolve(__dirname, '..'); const maybe = [path.join(root, 'src-tauri', 'wintun.dll'), path.join(root, 'src-tauri', 'src', 'assets')]; const target = path.join(root, 'src-tauri', 'wintun.dll'); if (!fs.existsSync(target)) { console.log('wintun.dll not found at build time; Tauri will still package if present in repo'); }\"",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../src/dist"
   },
@@ -12,11 +12,7 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "../assets/brand/whiteaesther-logo.png"
     ],
     "resources": [
       "../native/chain/build/windows/amd64/auroravpn-core.exe",
