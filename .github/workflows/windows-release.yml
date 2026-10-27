@@ -77,25 +77,38 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+
           $projectDir = Join-Path $env:GITHUB_WORKSPACE 'src-tauri'
           $dllPath = Join-Path $projectDir 'wintun.dll'
           $zipPath = Join-Path $env:RUNNER_TEMP 'wintun-amd64.zip'
           $tmpDir = Join-Path $env:RUNNER_TEMP 'wintun'
 
-          if (Test-Path $dllPath) { Remove-Item $dllPath -Force }
+          # 如果仓库里已经有 wintun.dll，直接跳过下载
+          if (Test-Path $dllPath) {
+            Write-Host "wintun.dll already exists in repo, skipping download." -ForegroundColor Green
+            exit 0
+          }
+
           if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
+          # ✅ 使用固定版本号，不用 latest（CI 里 latest 会 404）
           $urls = @(
-            'https://download.wireguard.com/wintun/wintun-amd64.zip',
-            'https://github.com/WireGuard/wintun/releases/latest/download/wintun-amd64.zip'
+            'https://github.com/WireGuard/wintun/releases/download/0.14.1/wintun-amd64.zip',
+            'https://download.wireguard.com/wintun/wintun-amd64.zip'
           )
 
           $downloaded = $false
           foreach ($url in $urls) {
             try {
               Write-Host "Downloading wintun from $url" -ForegroundColor Cyan
-              Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+              Invoke-WebRequest `
+                -Uri $url `
+                -OutFile $zipPath `
+                -UseBasicParsing `
+                -UserAgent "Mozilla/5.0" `
+                -MaximumRetryCount 3 `
+                -RetryIntervalSec 5
               $downloaded = $true
               break
             } catch {
