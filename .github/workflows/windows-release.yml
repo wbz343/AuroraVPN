@@ -226,9 +226,11 @@ jobs:
             Write-Host "OK: $p" -ForegroundColor Green
           }
 
-      - name: Install Frontend Dependencies
+      - name: Build Frontend
         working-directory: src
-        run: npm install
+        run: |
+          npm install
+          npm run build
 
       - name: Import Code Signing Certificate
         if: env.WIN_CERT_BASE64 != ''
