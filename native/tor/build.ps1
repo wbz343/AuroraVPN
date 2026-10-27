@@ -63,17 +63,14 @@ if ($Platform -eq 'windows') {
         Push-Location $src
         try {
             $env:GOFLAGS = '-mod=mod'
-            
-            # 🚨 关键修复 1: Windows 下纯 Go 编译通常不需要 CGO，禁用它可以避免 MinGW 的 C 库依赖问题
-            $env:CGO_ENABLED = '0' 
+            $env:CGO_ENABLED = '0' # 纯 Go 编译，避免 MinGW 依赖问题
             $env:GOOS = 'windows'
             $env:GOARCH = 'amd64'
-            # 移除了 $env:CC = 'gcc'，因为 CGO_ENABLED=0 时不需要 C 编译器
 
             Write-Host "building $($transport.Name) for windows/amd64 ..." -ForegroundColor Cyan
             
-            # 🚨 关键修复 2: 捕获构建输出，如果失败则打印详细错误，而不是静默吞掉
-            $buildOutput = go build -trimpath -ldflags="-w -s -checklinkname=0" -o $exe $transport.Package 2>&1
+            # 🚨 关键修复：移除了 -checklinkname=0，因为这是 Android 专属的 hack，Windows 不需要且会导致 linker 报错
+            $buildOutput = go build -trimpath -ldflags="-w -s" -o $exe $transport.Package 2>&1
             
             if ($LASTEXITCODE -ne 0) { 
                 Write-Host "=== Go Build Failed Output ===" -ForegroundColor Red
@@ -155,6 +152,7 @@ foreach ($name in $Abi) {
             if ($spec.Arm) { $env:GOARM = $spec.Arm } else { Remove-Item Env:GOARM -ErrorAction SilentlyContinue }
 
             Write-Host "building $($transport.Name) for $name ..." -ForegroundColor Cyan
+            # Android 分支保留原有的 -checklinkname=0，因为它被包裹在 -ldflags 中且针对 Android 是必需的
             go build -buildmode=pie -trimpath -ldflags="-w -s -checklinkname=0" -o $so $transport.Package
             if ($LASTEXITCODE -ne 0) { throw "go build failed for $($transport.Name) on $name" }
         } finally {
