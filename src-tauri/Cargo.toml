@@ -9,12 +9,19 @@ edition = "2021"
 tauri-build = { version = "2.0.0", features = [] }
 
 [dependencies]
+# Tauri 核心依赖。Tauri v2 默认已包含路径和资源访问能力。
 tauri = { version = "2.0.0", features = [] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-# 假设你的核心 Rust 代码在 native/aether，这里将其作为本地依赖引入
-# aether-core = { path = "../native/aether" } 
+
+# 新增：用于在运行时动态加载 Go 编译的 whiteaestherchain.dll
+libloading = "0.8"
+
+# 未来如果需要直接调用 native/aether 的 Rust 代码，取消下面这行的注释
+# aether-core = { path = "../native/aether" }
 
 [features]
+# Tauri v2 不再需要手动启用 "custom-protocol"，它已内置处理。
+# 保持默认空特性即可，除非你需要特定的平台特性（如 macos-private-api）
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
