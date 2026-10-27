@@ -86,7 +86,8 @@ jobs:
           # cache-dependency-path: 'src/package-lock.json'
 
       - name: Install Frontend Dependencies
-        run: npm --prefix src install
+        working-directory: src  # <--- 关键：显式告诉 Actions 在 src 目录下执行命令
+        run: npm install
 
       # 6. (可选) 导入 Windows 代码签名证书
       - name: Import Code Signing Certificate
