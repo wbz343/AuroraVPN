@@ -1,0 +1,20 @@
+[package]
+name = "auroravpn"
+version = "0.1.0"
+description = "AuroraVPN Windows Client"
+authors = ["AuroraVPN Team"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# 假设你的核心 Rust 代码在 native/aether，这里将其作为本地依赖引入
+# aether-core = { path = "../native/aether" } 
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
