@@ -133,6 +133,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Generate App Icons
+        run: npx @tauri-apps/cli icon assets/brand/whiteaesther-logo.png
+
       - name: Download wintun DLL
         shell: pwsh
         run: |
@@ -255,7 +258,8 @@ jobs:
             (Join-Path $projectRoot 'wintun.dll'),
             (Join-Path $repoRoot 'native/chain/build/windows/amd64/auroravpn-core.exe'),
             (Join-Path $repoRoot 'native/tor/build/windows/amd64/lyrebird.exe'),
-            (Join-Path $repoRoot 'native/tor/build/windows/amd64/snowflake.exe')
+            (Join-Path $repoRoot 'native/tor/build/windows/amd64/snowflake.exe'),
+            (Join-Path $projectRoot 'icons/icon.ico')
           )
 
           foreach ($file in $required) {
