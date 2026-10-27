@@ -26,9 +26,9 @@ jobs:
         shell: bash
         run: |
           if [ -n "${{ github.event.inputs.tag_override }}" ]; then
-            echo "TAG=${{ github.event.inputs.tag_override }}" >> $GITHUB_ENV
+            echo "TAG=${{ github.event.inputs.tag_override }}" >> "$GITHUB_ENV"
           else
-            echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+            echo "TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
           fi
 
       - name: Setup Go
@@ -55,42 +55,63 @@ jobs:
             'C:\mingw\bin'
           )
 
-          $mingwBin = $candidateDirs |
-            Where-Object { $_ -and (Test-Path (Join-Path $_ 'gcc.exe')) } |
-            Select-Object -First 1
+          $cc = $null
+          $binDir = $null
 
-          if (-not $mingwBin) {
-            $fallback = Get-ChildItem -Path 'C:\' -Filter 'gcc.exe' -Recurse -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -match 'mingw|msys64' } |
-              Select-Object -First 1
-            if ($fallback) {
-              $mingwBin = Split-Path -Parent $fallback.FullName
+          foreach ($dir in $candidateDirs) {
+            if (-not $dir -or -not (Test-Path $dir)) { continue }
+
+            $candidate = Join-Path $dir 'x86_64-w64-mingw32-gcc.exe'
+            if (Test-Path $candidate) {
+              $cc = $candidate
+              $binDir = $dir
+              break
+            }
+
+            $fallback = Join-Path $dir 'gcc.exe'
+            if (Test-Path $fallback) {
+              $cc = $fallback
+              $binDir = $dir
+              break
             }
           }
 
-          if (-not $mingwBin) {
+          if (-not $cc) {
             $checked = ($candidateDirs | ForEach-Object {
-              "$($_) => $((Test-Path (Join-Path $_ 'gcc.exe')) -as [string])"
+              if ($_ -and (Test-Path $_)) {
+                "($_) => { x86_64-w64-mingw32-gcc.exe: $((Test-Path (Join-Path $_ 'x86_64-w64-mingw32-gcc.exe'))); gcc.exe: $((Test-Path (Join-Path $_ 'gcc.exe'))) }"
+              } else {
+                "$($_) => not found"
+              }
             }) -join '; '
-            throw "MinGW gcc.exe not found. Checked: $checked"
+            throw "MinGW compiler not found. Checked: $checked"
           }
 
-          $env:Path = "$mingwBin;$env:Path"
-          $env:GITHUB_PATH = "$mingwBin;$env:GITHUB_PATH"
-          Write-Host "Added $mingwBin to PATH" -ForegroundColor Green
-          & (Join-Path $mingwBin 'gcc.exe') --version
+          $env:Path = "$binDir;$env:Path"
+          $env:GITHUB_PATH = "$binDir;$env:GITHUB_PATH"
 
-      - name: Verify GCC
+          Write-Host "Using compiler: $cc" -ForegroundColor Green
+          & $cc --version
+
+      - name: Verify GCC toolchain
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          gcc --version
+          Write-Host "PATH=$env:PATH"
           where.exe gcc
-          Get-Command gcc | Format-List *
+          where.exe x86_64-w64-mingw32-gcc
+          if (Get-Command gcc -ErrorAction SilentlyContinue) {
+            gcc --version
+          }
+          if (Get-Command x86_64-w64-mingw32-gcc -ErrorAction SilentlyContinue) {
+            x86_64-w64-mingw32-gcc --version
+          }
 
       - name: Initialize and Build Native Go Components (Windows)
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+
           Write-Host "=== Step 1: Running setup scripts to fetch dependencies ===" -ForegroundColor Cyan
           ./native/chain/setup.ps1
           ./native/tor/setup.ps1
@@ -185,6 +206,26 @@ jobs:
           Write-Host "wintun.dll SHA256: $($finalHash.Hash)" -ForegroundColor Cyan
           Write-Host "wintun.dll ready at $dllPath" -ForegroundColor Green
 
+      - name: Validate build artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $required = @(
+            'native/chain/build/windows/amd64/auroravpn-core.exe',
+            'native/tor/build/windows/amd64/lyrebird.exe',
+            'native/tor/build/windows/amd64/snowflake.exe',
+            'src-tauri/wintun.dll'
+          )
+
+          foreach ($p in $required) {
+            $full = Join-Path $env:GITHUB_WORKSPACE $p
+            if (-not (Test-Path $full)) {
+              throw "Missing required build artifact: $p"
+            }
+            Write-Host "OK: $p" -ForegroundColor Green
+          }
+
       - name: Install Frontend Dependencies
         working-directory: src
         run: npm install
@@ -200,6 +241,28 @@ jobs:
           $certPath = Join-Path $env:RUNNER_TEMP "certificate.pfx"
           [IO.File]::WriteAllBytes($certPath, $certBytes)
           echo "WIN_CERT_PATH=$certPath" >> $env:GITHUB_ENV
+
+      - name: Validate Tauri inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repoRoot = $env:GITHUB_WORKSPACE
+          $projectRoot = Join-Path $repoRoot 'src-tauri'
+
+          $required = @(
+            (Join-Path $projectRoot 'wintun.dll'),
+            (Join-Path $repoRoot 'native/chain/build/windows/amd64/auroravpn-core.exe'),
+            (Join-Path $repoRoot 'native/tor/build/windows/amd64/lyrebird.exe'),
+            (Join-Path $repoRoot 'native/tor/build/windows/amd64/snowflake.exe')
+          )
+
+          foreach ($file in $required) {
+            if (-not (Test-Path $file)) {
+              throw "Tauri build prerequisite missing: $file"
+            }
+          }
+
+          Write-Host "All Tauri build prerequisites are present." -ForegroundColor Green
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
