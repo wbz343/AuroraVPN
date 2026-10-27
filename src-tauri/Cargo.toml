@@ -21,7 +21,5 @@ libloading = "0.8"
 # aether-core = { path = "../native/aether" }
 
 [features]
-# Tauri v2 不再需要手动启用 "custom-protocol"，它已内置处理。
-# 保持默认空特性即可，除非你需要特定的平台特性（如 macos-private-api）
-default = ["custom-protocol"]
-custom-protocol = ["tauri/custom-protocol"]
+# Tauri v2 不需要再显式声明 custom-protocol，默认也不应保留 v1 兼容配置。
+default = []
