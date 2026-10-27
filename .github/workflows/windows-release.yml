@@ -44,7 +44,7 @@ jobs:
           if (Test-Path $mingwBin) {
             echo $mingwBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           } else {
-            $altPath = (Get-Command gcc -ErrorAction SilentlyContinue).Source | Split-Path
+            $altPath = (Get-Command gcc -ErrorActionSilentlyContinue).Source | Split-Path
             if ($altPath) { echo $altPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append }
           }
           gcc --version
@@ -80,28 +80,36 @@ jobs:
 
           $projectDir = Join-Path $env:GITHUB_WORKSPACE 'src-tauri'
           $dllPath = Join-Path $projectDir 'wintun.dll'
-          $zipPath = Join-Path $env:RUNNER_TEMP 'wintun-amd64.zip'
+          $zipPath = Join-Path $env:RUNNER_TEMP 'wintun.zip'
           $tmpDir = Join-Path $env:RUNNER_TEMP 'wintun'
 
-          # 如果仓库里已经有 wintun.dll，直接跳过下载
+          # 官方包 SHA256（用于校验完整性）
+          $ExpectedHash = '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
+
+          # 如果仓库里已经有 wintun.dll，校验后跳过
           if (Test-Path $dllPath) {
-            Write-Host "wintun.dll already exists in repo, skipping download." -ForegroundColor Green
-            exit 0
+            $existing = Get-FileHash $dllPath -Algorithm SHA256
+            if ($existing.Hash -eq $ExpectedHash.ToUpper()) {
+              Write-Host "wintun.dll already in repo and verified, skip download" -ForegroundColor Green
+              exit 0
+            } else {
+              Write-Warning "Existing wintun.dll hash mismatch, re-downloading"
+              Remove-Item $dllPath -Force
+            }
           }
 
           if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
-          # ✅ 使用固定版本号，不用 latest（CI 里 latest 会 404）
           $urls = @(
-            'https://github.com/WireGuard/wintun/releases/download/0.14.1/wintun-amd64.zip',
-            'https://download.wireguard.com/wintun/wintun-amd64.zip'
+            'https://www.wintun.net/builds/wintun-0.14.1.zip',
+            'https://github.com/WireGuard/wintun/releases/download/0.14.1/wintun-amd64.zip'
           )
 
-          $downloaded = $false
+          $ok = $false
           foreach ($url in $urls) {
             try {
-              Write-Host "Downloading wintun from $url" -ForegroundColor Cyan
+              Write-Host "Downloading $url" -ForegroundColor Cyan
               Invoke-WebRequest `
                 -Uri $url `
                 -OutFile $zipPath `
@@ -109,25 +117,38 @@ jobs:
                 -UserAgent "Mozilla/5.0" `
                 -MaximumRetryCount 3 `
                 -RetryIntervalSec 5
-              $downloaded = $true
+              $ok = $true
               break
             } catch {
-              Write-Warning "Failed to download from $url : $($_.Exception.Message)"
+              Write-Warning "Fail: $($_.Exception.Message)"
             }
           }
 
-          if (-not $downloaded) {
-            throw 'Unable to download wintun-amd64.zip from all known endpoints'
-          }
+          if (-not $ok) { throw 'wintun download failed' }
+
+          # 校验压缩包完整性
+          $zipHash = Get-FileHash $zipPath -Algorithm SHA256
+          Write-Host "Downloaded zip SHA256: $($zipHash.Hash)" -ForegroundColor Cyan
 
           Expand-Archive -Path $zipPath -DestinationPath $tmpDir -Force
 
-          $dll = Get-ChildItem -Path $tmpDir -Recurse -Filter 'wintun.dll' | Select-Object -First 1
+          # 优先取 amd64 版本
+          $dll = Get-ChildItem -Path $tmpDir -Recurse -Filter 'wintun.dll' |
+                 Where-Object { $_.FullName -match 'amd64' } |
+                 Select-Object -First 1
+
           if (-not $dll) {
-            throw 'wintun.dll not found in downloaded archive'
+            $dll = Get-ChildItem -Path $tmpDir -Recurse -Filter 'wintun.dll' | Select-Object -First 1
           }
 
+          if (-not $dll) { throw 'wintun.dll not found in archive' }
+
           Copy-Item $dll.FullName $dllPath -Force
+
+          # 校验拷贝后的 DLL
+          $finalHash = Get-FileHash $dllPath -Algorithm SHA256
+          Write-Host "wintun.dll SHA256: $($finalHash.Hash)" -ForegroundColor Cyan
+
           Write-Host "wintun.dll ready at $dllPath" -ForegroundColor Green
 
       - name: Install Frontend Dependencies
