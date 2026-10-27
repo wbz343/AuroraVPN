@@ -16,6 +16,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "../native/chain/build/windows/amd64/whiteaestherchain.dll",
+      "../native/tor/build/windows/amd64/lyrebird.exe",
+      "../native/tor/build/windows/amd64/snowflake.exe",
+      "wintun.dll"
+    ],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
