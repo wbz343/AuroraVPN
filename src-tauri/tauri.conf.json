@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "identifier": "com.auroravpn.desktop",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "cd ../src && npm run dev",
+    "beforeBuildCommand": "cd ../src && npm install && npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../src/dist"
   },
