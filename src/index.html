@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AuroraVPN Windows</title>
+  </head>
+  <body>
+    <h1>AuroraVPN</h1>
+    
+    <label for="protocol">选择协议:</label>
+    <select id="protocol">
+      <option value="aether">Aether (默认)</option>
+      <option value="psiphon">Psiphon</option>
+      <option value="tor">Tor (Snowflake)</option>
+    </select>
+    <br><br>
+    
+    <button id="connectBtn">连接 VPN</button>
+    <button id="disconnectBtn">断开连接</button>
+    
+    <pre id="log" style="background:#f4f4f4; padding:10px; margin-top:20px;"></pre>
+
+    <script type="module">
+      import { invoke } from '@tauri-apps/api/core';
+
+      const logEl = document.getElementById('log');
+      function log(msg) { logEl.textContent += msg + '\n'; }
+
+      document.getElementById('connectBtn').addEventListener('click', async () => {
+        const protocol = document.getElementById('protocol').value;
+        log(`正在尝试连接，协议: ${protocol}...`);
+        try {
+          // 调用 Rust 后端的 connect_vpn 命令
+          const result = await invoke('connect_vpn', { protocol });
+          log(`连接成功: ${result}`);
+        } catch (e) {
+          log(`连接失败: ${e}`);
+        }
+      });
+
+      document.getElementById('disconnectBtn').addEventListener('click', async () => {
+        log('正在断开连接...');
+        await invoke('disconnect_vpn');
+        log('已断开。');
+      });
+    </script>
+  </body>
+</html>
