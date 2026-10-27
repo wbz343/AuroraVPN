@@ -84,11 +84,28 @@ jobs:
 
           if (Test-Path $dllPath) { Remove-Item $dllPath -Force }
           if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
-          Invoke-WebRequest `
-            -Uri 'https://github.com/WireGuard/wintun/releases/latest/download/wintun-amd64.zip' `
-            -OutFile $zipPath `
-            -UseBasicParsing
+          $urls = @(
+            'https://download.wireguard.com/wintun/wintun-amd64.zip',
+            'https://github.com/WireGuard/wintun/releases/latest/download/wintun-amd64.zip'
+          )
+
+          $downloaded = $false
+          foreach ($url in $urls) {
+            try {
+              Write-Host "Downloading wintun from $url" -ForegroundColor Cyan
+              Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+              $downloaded = $true
+              break
+            } catch {
+              Write-Warning "Failed to download from $url : $($_.Exception.Message)"
+            }
+          }
+
+          if (-not $downloaded) {
+            throw 'Unable to download wintun-amd64.zip from all known endpoints'
+          }
 
           Expand-Archive -Path $zipPath -DestinationPath $tmpDir -Force
 
