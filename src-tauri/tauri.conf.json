@@ -4,7 +4,7 @@
   "identifier": "com.auroravpn.desktop",
   "build": {
     "beforeDevCommand": "cd ../src && npm run dev",
-    "beforeBuildCommand": "cd ../src && npm install && npm run build",
+    "beforeBuildCommand": "node -e \"const { spawnSync } = require('child_process'); const fs = require('fs'); const path = require('path'); const root = process.env.GITHUB_WORKSPACE || path.resolve(__dirname, '..'); const src = path.join(root, 'src'); if (!fs.existsSync(src)) { console.error('Missing frontend dir: ' + src); process.exit(1); } const install = spawnSync('npm', ['install'], { cwd: src, stdio: 'inherit', shell: true }); if (install.status) process.exit(install.status); const build = spawnSync('npm', ['run', 'build'], { cwd: src, stdio: 'inherit', shell: true }); process.exit(build.status || 0);\"",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../src/dist"
   },
