@@ -17,7 +17,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "../native/chain/build/windows/amd64/whiteaestherchain.dll",
+      "../native/chain/build/windows/amd64/auroravpn-core.exe",
       "../native/tor/build/windows/amd64/lyrebird.exe",
       "../native/tor/build/windows/amd64/snowflake.exe",
       "wintun.dll"
