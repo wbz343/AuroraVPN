@@ -40,14 +40,22 @@ jobs:
         shell: pwsh
         run: |
           choco install mingw -y --no-progress
-          $mingwBin = "C:\tools\mingw64\bin"
+
+          $mingwBin = "C:\ProgramData\mingw64\mingw64\bin"
           if (Test-Path $mingwBin) {
             echo $mingwBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            Write-Host "Added $mingwBin to PATH" -ForegroundColor Green
           } else {
-            $altPath = (Get-Command gcc -ErrorActionSilentlyContinue).Source | Split-Path
-            if ($altPath) { echo $altPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append }
+            $chocoPath = "C:\tools\mingw64\bin"
+            if (Test-Path $chocoPath) {
+              echo $chocoPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              Write-Host "Added $chocoPath to PATH" -ForegroundColor Green
+            } else {
+              throw "mingw64 bin directory not found after installation"
+            }
           }
-          gcc --version
+
+          & "$mingwBin\gcc.exe" --version
 
       - name: Initialize and Build Native Go Components (Windows)
         shell: pwsh
@@ -83,10 +91,8 @@ jobs:
           $zipPath = Join-Path $env:RUNNER_TEMP 'wintun.zip'
           $tmpDir = Join-Path $env:RUNNER_TEMP 'wintun'
 
-          # 官方包 SHA256（用于校验完整性）
           $ExpectedHash = '07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
 
-          # 如果仓库里已经有 wintun.dll，校验后跳过
           if (Test-Path $dllPath) {
             $existing = Get-FileHash $dllPath -Algorithm SHA256
             if ($existing.Hash -eq $ExpectedHash.ToUpper()) {
@@ -126,13 +132,8 @@ jobs:
 
           if (-not $ok) { throw 'wintun download failed' }
 
-          # 校验压缩包完整性
-          $zipHash = Get-FileHash $zipPath -Algorithm SHA256
-          Write-Host "Downloaded zip SHA256: $($zipHash.Hash)" -ForegroundColor Cyan
-
           Expand-Archive -Path $zipPath -DestinationPath $tmpDir -Force
 
-          # 优先取 amd64 版本
           $dll = Get-ChildItem -Path $tmpDir -Recurse -Filter 'wintun.dll' |
                  Where-Object { $_.FullName -match 'amd64' } |
                  Select-Object -First 1
@@ -145,10 +146,8 @@ jobs:
 
           Copy-Item $dll.FullName $dllPath -Force
 
-          # 校验拷贝后的 DLL
           $finalHash = Get-FileHash $dllPath -Algorithm SHA256
           Write-Host "wintun.dll SHA256: $($finalHash.Hash)" -ForegroundColor Cyan
-
           Write-Host "wintun.dll ready at $dllPath" -ForegroundColor Green
 
       - name: Install Frontend Dependencies
