@@ -60,4 +60,112 @@ if ($Platform -eq 'windows') {
     Write-Host "Building Pluggable Transports for Windows (amd64)..." -ForegroundColor Cyan
     
     $dir = Join-Path $out 'windows' 'amd64'
-    New-Item -ItemType Directory -Force -Path $
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+    foreach ($transport in $Transports) {
+        $src = Join-Path $here "third_party/$($transport.Source)"
+        # Windows 下直接输出为标准的 .exe 文件
+        $exe = Join-Path $dir "$($transport.Name).exe"
+
+        Push-Location $src
+        try {
+            $env:GOFLAGS = '-mod=mod'
+            $env:CGO_ENABLED = '1'
+            $env:GOOS = 'windows'
+            $env:GOARCH = 'amd64'
+            $env:CC = 'gcc' # 依赖 MinGW-w64
+
+            Write-Host "building $($transport.Name) for windows/amd64 ..." -ForegroundColor Cyan
+            
+            # Windows 不需要 -buildmode=pie，默认即为兼容模式。
+            # 保留 -checklinkname=0 以防共享代码库中的 wlynxg/anet 触发 Go 1.23+ 的严格检查。
+            go build -trimpath -ldflags="-w -s -checklinkname=0" -o $exe $transport.Package
+            if ($LASTEXITCODE -ne 0) { throw "go build failed for $($transport.Name) on windows" }
+        } finally {
+            Pop-Location
+            Remove-Item Env:GOFLAGS, Env:CGO_ENABLED, Env:GOOS, Env:GOARCH, Env:CC -ErrorAction SilentlyContinue
+        }
+
+        $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
+        Write-Host "  -> $exe  ($mb MB)" -ForegroundColor Green
+    }
+    
+    Write-Host ""
+    Write-Host "built: windows/amd64" -ForegroundColor Green
+    return # Windows 构建完成，直接退出
+}
+
+# ==========================================================
+# ANDROID BUILD PATH (原有逻辑，保持不变)
+# ==========================================================
+if ($Platform -ne 'android') {
+    throw "Unknown platform: $Platform. Use 'android' or 'windows'."
+}
+
+Write-Host "Building Pluggable Transports for Android..." -ForegroundColor Cyan
+
+$sdk = $env:ANDROID_HOME
+if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
+if (-not $sdk) {
+    $props = Join-Path (Split-Path -Parent (Split-Path -Parent $here)) 'local.properties'
+    if (Test-Path $props) {
+        $match = Select-String -Path $props -Pattern 'sdk\.dir\s*=\s*(.+)' | Select-Object -First 1
+        if ($match) { $sdk = $match.Matches[0].Groups[1].Value.Trim().Replace('\:', ':') }
+    }
+}
+if (-not $sdk) { $sdk = Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
+
+$ndkRoot = Join-Path $sdk 'ndk'
+if (-not (Test-Path $ndkRoot)) {
+    throw "Android NDK not found under $sdk. Set ANDROID_HOME, or sdk.dir in local.properties."
+}
+$ndk = (Get-ChildItem $ndkRoot -Directory | Sort-Object Name -Descending)[0].FullName
+
+$hostTag = if ($IsLinux) { 'linux-x86_64' } elseif ($IsMacOS) { 'darwin-x86_64' } else { 'windows-x86_64' }
+$bin = Join-Path $ndk "toolchains/llvm/prebuilt/$hostTag/bin"
+if (-not (Test-Path $bin)) { throw "NDK toolchain not found for this host: $bin" }
+$ext = if ($IsLinux -or $IsMacOS) { '' } else { '.cmd' }
+
+$targets = @{
+    'arm64-v8a'   = @{ Arch = 'arm64'; Clang = "aarch64-linux-android26-clang$ext";    Arm = $null }
+    'x86_64'      = @{ Arch = 'amd64'; Clang = "x86_64-linux-android26-clang$ext";     Arm = $null }
+    'armeabi-v7a' = @{ Arch = 'arm';   Clang = "armv7a-linux-androideabi26-clang$ext"; Arm = '7'  }
+}
+
+foreach ($name in $Abi) {
+    $spec = $targets[$name]
+    if (-not $spec) { throw "unknown ABI: $name" }
+    $cc = Join-Path $bin $spec.Clang
+    if (-not (Test-Path $cc)) { throw "NDK clang not found: $cc" }
+
+    $dir = Join-Path $out $name
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+    foreach ($transport in $Transports) {
+        $src = Join-Path $here "third_party/$($transport.Source)"
+        $so = Join-Path $dir "lib$($transport.Name).so"
+
+        Push-Location $src
+        try {
+            $env:GOFLAGS = '-mod=mod'
+            $env:CGO_ENABLED = '1'
+            $env:GOOS = 'android'
+            $env:GOARCH = $spec.Arch
+            $env:CC = $cc
+            if ($spec.Arm) { $env:GOARM = $spec.Arm } else { Remove-Item Env:GOARM -ErrorAction SilentlyContinue }
+
+            Write-Host "building $($transport.Name) for $name ..." -ForegroundColor Cyan
+            go build -buildmode=pie -trimpath -ldflags="-w -s -checklinkname=0" -o $so $transport.Package
+            if ($LASTEXITCODE -ne 0) { throw "go build failed for $($transport.Name) on $name" }
+        } finally {
+            Pop-Location
+            Remove-Item Env:GOFLAGS, Env:CGO_ENABLED, Env:GOOS, Env:GOARCH, Env:CC, Env:GOARM -ErrorAction SilentlyContinue
+        }
+
+        $mb = [math]::Round((Get-Item $so).Length / 1MB, 1)
+        Write-Host "  -> $so  ($mb MB)" -ForegroundColor Green
+    }
+}
+
+Write-Host ""
+Write-Host "built: android/$($Abi -join ', ')" -ForegroundColor Green
