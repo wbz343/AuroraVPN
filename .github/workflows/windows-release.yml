@@ -85,7 +85,11 @@ jobs:
           if (Test-Path $dllPath) { Remove-Item $dllPath -Force }
           if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
 
-          Invoke-WebRequest -Uri 'https://github.com/wintun/wintun/releases/latest/download/wintun-amd64.zip' -OutFile $zipPath
+          Invoke-WebRequest `
+            -Uri 'https://github.com/WireGuard/wintun/releases/latest/download/wintun-amd64.zip' `
+            -OutFile $zipPath `
+            -UseBasicParsing
+
           Expand-Archive -Path $zipPath -DestinationPath $tmpDir -Force
 
           $dll = Get-ChildItem -Path $tmpDir -Recurse -Filter 'wintun.dll' | Select-Object -First 1
