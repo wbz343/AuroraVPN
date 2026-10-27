@@ -9,6 +9,48 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Get-MinGWToolchain {
+    $candidateDirs = @(
+        'C:\ProgramData\chocolatey\bin',
+        'C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin',
+        'C:\ProgramData\mingw64\mingw64\bin',
+        'C:\tools\mingw64\bin',
+        'C:\msys64\mingw64\bin',
+        'C:\msys64\usr\bin',
+        'C:\mingw64\bin',
+        'C:\mingw\bin'
+    )
+
+    foreach ($dir in $candidateDirs) {
+        if (-not $dir -or -not (Test-Path $dir)) { continue }
+
+        $gcc = Join-Path $dir 'x86_64-w64-mingw32-gcc.exe'
+        if (Test-Path $gcc) {
+            $gpp = Join-Path $dir 'x86_64-w64-mingw32-g++.exe'
+            $ar  = Join-Path $dir 'ar.exe'
+            return @{
+                BinDir = $dir
+                CC     = $gcc
+                CXX    = if (Test-Path $gpp) { $gpp } else { $null }
+                AR     = if (Test-Path $ar) { $ar } else { $null }
+            }
+        }
+
+        $gcc = Join-Path $dir 'gcc.exe'
+        if (Test-Path $gcc) {
+            return @{
+                BinDir = $dir
+                CC     = $gcc
+                CXX    = $null
+                AR     = $null
+            }
+        }
+    }
+
+    throw "No usable MinGW toolchain found for windows/amd64 build."
+}
+
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $out = Join-Path $here 'build'
 
@@ -30,16 +72,22 @@ foreach ($transport in $Transports) {
 if ($Platform -eq 'windows') {
     Write-Host "Building Pluggable Transports for Windows (amd64)..." -ForegroundColor Cyan
 
-    $dir = Join-Path $out 'windows' 'amd64'
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $toolchain = Get-MinGWToolchain
+    $env:PATH = "$($toolchain.BinDir);$env:PATH"
 
-    $gcc = Get-Command gcc -ErrorAction Stop
-    $env:CC = $gcc.Source
+    $env:CC = $toolchain.CC
+    if ($toolchain.CXX) { $env:CXX = $toolchain.CXX }
+    if ($toolchain.AR)  { $env:AR = $toolchain.AR }
+
     $env:CGO_ENABLED = '1'
     $env:GOOS = 'windows'
     $env:GOARCH = 'amd64'
 
-    Write-Host "Using gcc: $env:CC"
+    Write-Host "Using compiler: $env:CC" -ForegroundColor Green
+    & $env:CC --version
+
+    $dir = Join-Path $out 'windows' 'amd64'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
     foreach ($transport in $Transports) {
         $src = Join-Path $here "third_party/$($transport.Source)"
@@ -57,9 +105,10 @@ if ($Platform -eq 'windows') {
                 Write-Host "==============================" -ForegroundColor Red
                 throw "go build failed for $($transport.Name) on windows. See detailed output above."
             }
-        } finally {
+        }
+        finally {
             Pop-Location
-            Remove-Item Env:GOFLAGS, Env:CGO_ENABLED, Env:GOOS, Env:GOARCH, Env:CC -ErrorAction SilentlyContinue
+            Remove-Item Env:GOFLAGS, Env:CGO_ENABLED, Env:GOOS, Env:GOARCH, Env:CC, Env:CXX, Env:AR -ErrorAction SilentlyContinue
         }
 
         $mb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
@@ -70,3 +119,5 @@ if ($Platform -eq 'windows') {
     Write-Host "built: windows/amd64" -ForegroundColor Green
     return
 }
+
+Write-Host "Platform not set to windows; no-op for this script." -ForegroundColor Yellow
