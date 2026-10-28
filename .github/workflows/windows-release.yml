@@ -27,8 +27,11 @@ jobs:
         run: |
           if [ -n "${{ github.event.inputs.tag_override }}" ]; then
             echo "TAG=${{ github.event.inputs.tag_override }}" >> "$GITHUB_ENV"
-          else
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
+          else
+            echo "::error::无法确定版本 Tag。如果是手动触发，请填写 tag_override 输入框。"
+            exit 1
           fi
 
       - name: Setup Go
@@ -270,6 +273,27 @@ jobs:
 
           Write-Host "All Tauri build prerequisites are present." -ForegroundColor Green
 
+      # ================= 新增：复制 Sidecar 文件到 Tauri bin 目录 =================
+      - name: Copy Sidecars to Tauri bin directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $binDir = Join-Path $env:GITHUB_WORKSPACE 'src-tauri' 'bin'
+          if (-not (Test-Path $binDir)) { 
+            New-Item -ItemType Directory -Path $binDir | Out-Null 
+          }
+          
+          # Tauri 在 Windows 下期望的 sidecar 命名后缀
+          $targetTriple = "x86_64-pc-windows-msvc"
+          
+          # 复制编译好的核心引擎
+          Copy-Item "native/chain/build/windows/amd64/auroravpn-core.exe" "$binDir/auroravpn-core-$targetTriple.exe" -Force
+          Copy-Item "native/tor/build/windows/amd64/lyrebird.exe" "$binDir/lyrebird-$targetTriple.exe" -Force
+          Copy-Item "native/tor/build/windows/amd64/snowflake.exe" "$binDir/snowflake-$targetTriple.exe" -Force
+          
+          Write-Host "Sidecars copied successfully to $binDir" -ForegroundColor Green
+          Get-ChildItem $binDir
+          
       - name: Build and Publish Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
@@ -278,9 +302,9 @@ jobs:
           projectPath: src-tauri
           args: "--verbose"
           
-          # === 自动创建 Release 并上传产物的关键配置 ===
+          # 自动创建 Release 并上传产物的关键配置
           tagName: ${{ env.TAG }}
           releaseName: "Release ${{ env.TAG }}"
-          releaseBody: "See the assets to download and install this version."
+          releaseBody: "Windows 客户端安装包。"
           releaseDraft: false
           prerelease: false
